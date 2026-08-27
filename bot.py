@@ -1,84 +1,49 @@
-import requests, time, os, json
+import os, time, requests, threading
 from bs4 import BeautifulSoup
 from flask import Flask
-from threading import Thread
+import telebot
 
-app = Flask('')
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
+
 @app.route('/')
 def home():
-    return "Bot is alive!"
-def run():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-URL = "https://999.md/ro/list/transport"
-SEEN_FILE = "seen.json"
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHANNEL = os.environ.get("CHANNEL_ID")
-
-def load_seen():
-    if os.path.exists(SEEN_FILE):
-        try:
-            return set(json.load(open(SEEN_FILE)))
-        except:
-            return set()
-    return set()
-
-def save_seen(seen):
-    json.dump(list(seen), open(SEEN_FILE, "w"))
+    return "Bot is alive! Ungheni"
 
 def get_ads():
     try:
-        r = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-        soup = BeautifulSoup(r.text, "html.parser")
-        ads = []
-        for a in soup.select("a[href*='/bo']"):
-            href = a.get("href")
-            if not href: continue
-            title = a.get_text(strip=True)
-            if title and len(title) > 5:
-                if "https" not in href:
-                    href = "https://999.md" + href
-                ads.append({"id": href, "title": title, "link": href})
-        return ads[:10]
+        print("Caut anunturi...")
+        url = "https://999.md/ro/list/real-estate/apartments-and-rooms"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        links = []
+        for a in soup.find_all('a', href=True):
+            h = a['href']
+            if '/ro/' in h and 'booster' not in h and len(h) > 25:
+                if not h.startswith('http'):
+                    h = 'https://999.md' + h
+                links.append(h)
+        return list(set(links))[:3]
     except Exception as e:
-        print(f"Eroare get_ads: {e}")
+        print(e)
         return []
 
-def send_telegram(text, link):
-    if not TOKEN or not CHANNEL:
-        print("Lipseste TOKEN sau CHANNEL!")
-        return
-    try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        data = {"chat_id": CHANNEL, "text": f"{text}\n\n{link}"}
-        resp = requests.post(url, data=data, timeout=10)
-        print(f"Telegram: {resp.text}")
-    except Exception as e:
-        print(f"Eroare telegram: {e}")
-
-def main():
-    seen = load_seen()
-    print(f"Bot pornit! Văzute: {len(seen)} TOKEN setat: {bool(TOKEN)} CHANNEL: {CHANNEL}")
+def loop():
     while True:
         try:
             ads = get_ads()
-            print(f"Găsite {len(ads)} anunțuri")
-            new = [x for x in ads if x["id"] not in seen]
-            print(f"NOI: {len(new)}")
-            for x in reversed(new):
-                print(f"NOU: {x['title']}")
-                send_telegram(x['title'], x['link'])
-                seen.add(x["id"])
-                time.sleep(2)
-            if new:
-                save_seen(seen)
+            for ad in ads:
+                bot.send_message(CHANNEL_ID, f"🏠 Anunt nou!\n{ad}\n#Ungheni")
+                print(f"Trimis {ad}")
+                time.sleep(5)
+            time.sleep(1800)
         except Exception as e:
-            print(f"Eroare main: {e}")
-        time.sleep(300)
+            print(e)
+            time.sleep(60)
 
-if __name__=="__main__":
-    keep_alive()
-    main()
+threading.Thread(target=loop, daemon=True).start()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
