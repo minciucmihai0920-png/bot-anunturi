@@ -1,6 +1,19 @@
 import requests, time, os, json
 from bs4 import BeautifulSoup
+from flask import Flask
+from threading import Thread
 
+app = Flask('')
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=10000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 URL = "https://999.md/ro/list/transport/cars"
 SEEN_FILE = "seen.json"
 
@@ -27,7 +40,8 @@ def get_ads():
     return ads
 
 def main():
-    seen=load_seen()
+  keep_alive() 
+  seen=load_seen()
     while True:
         try:
             ads=get_ads()
