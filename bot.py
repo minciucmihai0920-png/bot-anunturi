@@ -1,84 +1,68 @@
-import os, time, threading, requests
+import os, sys, time, threading, requests
+from bs4 import BeautifulSoup
 from flask import Flask
 
+print(">>> Pornesc botul...", flush=True)
+
+TOKEN = os.environ.get("BOT_TOKEN", "")
+CHANNEL_ID = os.environ.get("CHANNEL_ID", "")
+URL_SITE = "https://999.md/ro/list/real-estate/houses-and-villas?hide_dup=1&o_33_1=737&sort_type=price_asc&view_type=short"
+
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+seen = set()
 app = Flask(__name__)
-
-TOKEN = os.environ.get("BOT_TOKEN", "8186531834:AAE5g2j5R3c1p3S_x6tU1h5J6m7N8b9v0c1d2")
-CHANNEL = os.environ.get("CHANNEL_ID", "@testbot999anunturi")
-SITE_URL = "https://999.md/ro/list/transport-and-equipment/buses"
-SEEN_FILE = "seen.txt"
-
-def get_seen():
-    if not os.path.exists(SEEN_FILE):
-        return set()
-    try:
-        with open(SEEN_FILE, "r") as f:
-            return set([x.strip() for x in f if x.strip()])
-    except:
-        return set()
-
-def save_seen(link):
-    try:
-        with open(SEEN_FILE, "a") as f:
-            f.write(link + "\n")
-    except:
-        pass
-
-def send_telegram(text):
-    try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        data = {"chat_id": CHANNEL, "text": text, "parse_mode": "HTML"}
-        r = requests.post(url, data=data, timeout=15)
-        print(f"Telegram raspuns: {r.status_code} - {r.text[:200]}")
-        return r.status_code == 200
-    except Exception as e:
-        print(f"Eroare telegram: {e}")
-        return False
-
-def check_999():
-    print(">>> Verific 999.md...")
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        r = requests.get(SITE_URL, headers=headers, timeout=20)
-        print(f"999.md status: {r.status_code}, lungime: {len(r.text)}")
-        if r.status_code != 200:
-            return
-        seen = get_seen()
-        print(f"Am deja {len(seen)} linkuri vazute")
-        links = []
-        # cauta linkuri
-        import re
-        found = re.findall(r'href="(/ro/[^"]+)"', r.text)
-        for f in found:
-            if "/booster" in f or "transport-and-equipment" in f or "/list/" in f:
-                full = "https://999.md" + f
-                if full not in seen and full not in links:
-                    links.append(full)
-        print(f"Am gasit {len(links)} linkuri noi potentiale")
-        for link in links[:5]:
-            titlu = link.split("/")[-1].replace("-", " ")[:100]
-            msg = f"🚌 <b>Autobuz nou pe 999.md</b>\n\n{titlu}\n\n🔗 {link}"
-            if send_telegram(msg):
-                save_seen(link)
-                print(f"Trimis: {link}")
-                time.sleep(2)
-            else:
-                print(f"Nu am putut trimite: {link}")
-    except Exception as e:
-        print(f"Eroare check: {e}")
-
-def loop():
-    print(">>> Bot pornit! Verifica 999.md la fiecare 3 min")
-    time.sleep(10)
-    while True:
-        check_999()
-        time.sleep(180)
 
 @app.route("/")
 def home():
-    return "Botul merge! Verifica logs"
+    return "Bot e LIVE! Verifica 999.md la 3 min."
 
-threading.Thread(target=loop, daemon=True).start()
+def trimite(msg):
+    if not TOKEN or not CHANNEL_ID:
+        print("!!! LIPSESTE TOKEN sau CHANNEL_ID in Environment !!!", flush=True)
+        return
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                          data={"chat_id": CHANNEL_ID, "text": msg, "parse_mode": "HTML"}, timeout=15)
+        print(f"Telegram raspuns: {r.status_code} {r.text[:200]}", flush=True)
+    except Exception as e:
+        print(f"Eroare Telegram: {e}", flush=True)
+
+def verifica():
+    print(f">>> Verific 999.md ...", flush=True)
+    try:
+        resp = requests.get(URL_SITE, headers=HEADERS, timeout=30)
+        print(f"999.md status: {resp.status_code}", flush=True)
+        if resp.status_code != 200:
+            return
+        soup = BeautifulSoup(resp.text, "html.parser")
+        anunturi = soup.select("a[href*='/ro/']") 
+        gasite = 0
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "/ro/" in href and len(href) > 20:
+                if href.startswith("/"): href = "https://999.md" + href
+                if href not in seen:
+                    titlu = a.get_text(strip=True)[:100]
+                    if len(titlu) > 10:
+                        seen.add(href)
+                        gasite += 1
+                        msg = f"🏠 <b>Anunt nou!</b>\n{titlu}\n{href}"
+                        print(f"NOU: {titlu}", flush=True)
+                        trimite(msg)
+        if gasite == 0:
+            print("Nimic nou.", flush=True)
+    except Exception as e:
+        print(f"Eroare verifica: {e}", flush=True)
+
+def bucla():
+    print(">>> Bot pornit! Verifica 999.md la fiecare 3 min", flush=True)
+    trimite("✅ Botul a pornit si monitorizeaza 999.md (case Chisinau < 25k€)!")
+    while True:
+        verifica()
+        time.sleep(180)
+
+# PORNESTE THREAD-UL IMEDIAT, nu doar in __main__
+threading.Thread(target=bucla, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
