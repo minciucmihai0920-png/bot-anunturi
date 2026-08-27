@@ -1,68 +1,62 @@
-import os, sys, time, threading, requests
+import requests
 from bs4 import BeautifulSoup
+import time
+import threading
 from flask import Flask
+import os
 
-print(">>> Pornesc botul...", flush=True)
+print(">>> PORNESC BOTUL CU TOKEN NOU!!!", flush=True)
 
-TOKEN = os.environ.get("BOT_TOKEN", "")
-CHANNEL_ID = os.environ.get("CHANNEL_ID", "")
-URL_SITE = "https://999.md/ro/list/real-estate/houses-and-villas?hide_dup=1&o_33_1=737&sort_type=price_asc&view_type=short"
+BOT_TOKEN = "8964072454:AAG98n3icTjE2IxksHhusnaR1v-rnbiC2Aw"
+CHAT_ID = "-1003091041331"
+URL_999 = "https://999.md/ro/list/real-estate/houses-and-villas?hide_duplicates=yes&hide_outdated=yes&o_33_1=776&o_33_1=1065&r_6_1_unit=eur&r_6_1_from=0&r_6_1_to=25000"
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-seen = set()
 app = Flask(__name__)
 
-@app.route("/")
+@app.route('/')
 def home():
-    return "Bot e LIVE! Verifica 999.md la 3 min."
+    return "Bot e LIVE! Verifica Telegram - case Chisinau <25k"
 
-def trimite(msg):
-    if not TOKEN or not CHANNEL_ID:
-        print("!!! LIPSESTE TOKEN sau CHANNEL_ID in Environment !!!", flush=True)
-        return
-    try:
-        r = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                          data={"chat_id": CHANNEL_ID, "text": msg, "parse_mode": "HTML"}, timeout=15)
-        print(f"Telegram raspuns: {r.status_code} {r.text[:200]}", flush=True)
-    except Exception as e:
-        print(f"Eroare Telegram: {e}", flush=True)
+trimise = set()
 
-def verifica():
-    print(f">>> Verific 999.md ...", flush=True)
+def trimite_telegram(text):
     try:
-        resp = requests.get(URL_SITE, headers=HEADERS, timeout=30)
-        print(f"999.md status: {resp.status_code}", flush=True)
-        if resp.status_code != 200:
-            return
-        soup = BeautifulSoup(resp.text, "html.parser")
-        anunturi = soup.select("a[href*='/ro/']") 
-        gasite = 0
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if "/ro/" in href and len(href) > 20:
-                if href.startswith("/"): href = "https://999.md" + href
-                if href not in seen:
-                    titlu = a.get_text(strip=True)[:100]
-                    if len(titlu) > 10:
-                        seen.add(href)
-                        gasite += 1
-                        msg = f"🏠 <b>Anunt nou!</b>\n{titlu}\n{href}"
-                        print(f"NOU: {titlu}", flush=True)
-                        trimite(msg)
-        if gasite == 0:
-            print("Nimic nou.", flush=True)
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        r = requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
+        print(f"Telegram: {r.status_code} {r.text[:300]}", flush=True)
+        return r.status_code == 200
     except Exception as e:
-        print(f"Eroare verifica: {e}", flush=True)
+        print(f"Eroare: {e}", flush=True)
+        return False
+
+def verifica_999():
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        r = requests.get(URL_999, headers=headers, timeout=20)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        print(f"999.md status: {r.status_code}, lungime: {len(r.text)}", flush=True)
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            if '/boletin/' in href or '/ro/' in href and len(href) > 25 and '999.md' in href or href.startswith('/ro/'):
+                full = href if '999.md' in href else f"https://999.md{href}"
+                if full not in trimise and 'real-estate' in full or 'boletin' in full:
+                    trimise.add(full)
+                    msg = f"🏠 <b>CASA NOUA <25k€ Chisinau!</b>\n\n{full}\n\n#chisinau #casa"
+                    trimite_telegram(msg)
+                    time.sleep(1)
+    except Exception as e:
+        print(f"Eroare verificare 999: {e}", flush=True)
 
 def bucla():
-    print(">>> Bot pornit! Verifica 999.md la fiecare 3 min", flush=True)
-    trimite("✅ Botul a pornit si monitorizeaza 999.md (case Chisinau < 25k€)!")
+    print(">>> Bucla pornita - trimit mesaj de start", flush=True)
+    time.sleep(5)
+    trimite_telegram("✅ <b>BOTUL A PORNIT CU SUCCES!</b>\n\nMonitorizez 999.md - case Chisinau < 25.000€\nVerific la fiecare 3 minute.\n\nO sa primesti anunturi aici automat! 🏠")
     while True:
-        verifica()
+        verifica_999()
         time.sleep(180)
 
-# PORNESTE THREAD-UL IMEDIAT, nu doar in __main__
 threading.Thread(target=bucla, daemon=True).start()
+print(">>> Thread pornit!", flush=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
