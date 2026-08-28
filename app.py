@@ -1,47 +1,42 @@
-import os, time, threading, requests
-from bs4 import BeautifulSoup
+import os, threading, time, requests
 from flask import Flask
+from bs4 import BeautifulSoup
 
-BOT_TOKEN=os.getenv("BOT_TOKEN")
-CHANNEL_ID=os.getenv("CHANNEL_ID")
-sent=set()
-app=Flask(__name__)
+app = Flask(__name__)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+vazute = set()
 
 @app.route('/')
 def home():
-    return "Bot LIVE - TOATE ANUNTURILE 999"
+    return "Bot LIVE - Toate anunturile 999"
 
-def get_ads():
+def trimite(titlu, link):
     try:
-        r=requests.get("https://999.md/ro/list", headers={"User-Agent":"Mozilla/5.0"}, timeout=15)
-        soup=BeautifulSoup(r.text,"html.parser")
-        ads=[]
-        for a in soup.select("a[href*='/boletin/']"):
-            link=a.get("href")
-            if not link: continue
-            if not link.startswith("http"): link="https://999.md"+link
-            title=a.get_text(strip=True)
-            if len(title)<10: continue
-            ads.append((title,link))
-            if len(ads)>=5: break
-        return ads
-    except:
-        return []
-
-def send(msg):
-    try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", data={"chat_id":CHANNEL_ID,"text":msg}, timeout=10)
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        text = f"📢 {titlu}\n\n🔗 {link}"
+        requests.post(url, data={"chat_id": CHANNEL_ID, "text": text}, timeout=10)
     except: pass
 
 def loop():
     while True:
-        for tit,link in get_ads():
-            if link not in sent:
-                send(f"📢 {tit}\n\n{link}")
-                sent.add(link)
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get("https://999.md/ro/list", headers=headers, timeout=20)
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True)[:40]:
+                href = a["href"]
+                if "/boletin/" in href:
+                    link = "https://999.md" + href if href.startswith("/") else href
+                    tit = a.get_text(strip=True)[:80]
+                    if link not in vazute and len(tit) > 5:
+                        vazute.add(link)
+                        trimite(tit, link)
+        except Exception as e:
+            print(e)
         time.sleep(60)
 
-threading.Thread(target=loop,daemon=True).start()
+threading.Thread(target=loop, daemon=True).start()
 
-if __name__=="__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
