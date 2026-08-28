@@ -1,63 +1,51 @@
-import os, requests, time, threading
-from bs4 import BeautifulSoup
 from flask import Flask
+import os
+import time
+import threading
+import requests
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
-trimise = set()
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
 
-def trimite_telegram(text):
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # ex: @anunturi_ungheni sau -100123...
+
+sent_ads = set()
+
+def get_999_ads():
+    try:
+        url = "https://999.md/ro/list/real-estate/apartments?r=ungheni"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        ads = []
+        for item in soup.select("a[href*='/boletin/']")[:5]:
+            link = item.get("href")
+            if not link.startswith("http"):
+                link = "https://999.md" + link
+            title = item.get_text(strip=True)[:100]
+            if link not in sent_ads and title:
+                ads.append((title, link))
+        return ads
+    except Exception as e:
+        print(f"Eroare scraper: {e}")
+        return []
+
+def send_to_telegram(text):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": CHAT_ID, "text": text})
-    except: pass
-
-def verifica_999():
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get("https://999.md/ro/list", headers=headers, timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        gasite = 0
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            full = href if 'https' in href else f"https://999.md{href}"
-            # Vrem doar anunturi reale, nu blog/info
-            if '/blog' in full: continue
-            if '/info' in full: continue
-            if '/ro/' not in full: continue
-            if full.count('/') < 4: continue
-            if len(full) < 30: continue
-            if full in trimise: continue
-            if '999.md' not in full: continue
-            
-            # Doar daca pare anunt (are cifre in link)
-            if not any(c.isdigit() for c in full[-15:]):
-                continue
-
-            print(f"ANUNT GASIT: {full}", flush=True)
-            trimise.add(full)
-            trimite_telegram(f"🏠 ANUNT NOU 999.md\n\n{full}")
-            gasite += 1
-            time.sleep(1)
-            if gasite >= 3: break
-        print(f"Gata, gasite noi: {gasite}", flush=True)
+        data = {"chat_id": CHANNEL_ID, "text": text}
+        requests.post(url, data=data, timeout=10)
+        print(f"Trimis: {text[:50]}")
     except Exception as e:
-        print(f"Eroare: {e}", flush=True)
+        print(f"Eroare telegram: {e}")
 
-def bucla():
-    time.sleep(5)
-    trimite_telegram("✅ BOT FINAL PORNIT - trimite doar anunturi reale, fara bloguri")
+def loop():
     while True:
-        verifica_999()
-        time.sleep(180)
-
-threading.Thread(target=bucla, daemon=True).start()
-
-@app.route('/')
-def home():
-    return "Bot online!"
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+        print("Caut anunturi...")
+        ads = get_999_ads()
+        for title, link in ads:
+            msg = f"🏠 {title}\n\n🔗 {link}"
+            send_to_telegram(msg)
+            sent_ads.add(link)
+            time.sleep(2
