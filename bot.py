@@ -31,7 +31,7 @@ def trimite_telegram(text):
 def verifica_999():
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        url = "https://999.md/ro/list/real-estate/houses-and-villas?o_33_1=776"
+        url = "https://999.md/ro"
         r = requests.get(url, headers=headers, timeout=20)
         print(f"999 status: {r.status_code} len: {len(r.text)}", flush=True)
         soup = BeautifulSoup(r.text, 'html.parser')
